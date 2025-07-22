@@ -6,8 +6,7 @@ jupyter: titiler  # Use your Conda environment
 
 ```{r env-activate}
 library(reticulate)
-reticulate::use_condaenv("titiler", required = TRUE)
-# reticulate::py_config()
+reticulate::use_condaenv("stac", required = TRUE)
 
 ```
 
@@ -20,8 +19,9 @@ keys <- ngr::ngr_s3_keys_get(
 
 fs::dir_create("data")
 
-# get rid of paths with ( in them
-keys_clean <- keys[!stringr::str_detect(keys, "\\(")]
+# get rid of paths with ( in them (and dupes)
+keys_clean <- unique(keys[!stringr::str_detect(keys, "\\(")])
+
 
 readr::write_lines(keys_clean, "data/urls_list.txt")
 
@@ -183,7 +183,7 @@ collection.set_self_href(path_s3_json)
 
 Test to see if the collection is valid
 
-```{python}
+```{python, test-valid}
 # need to load the collection.json to aws!!! first. should fix but not ging to
 # stac validate ./bc-uav-collection.json
 
