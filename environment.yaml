@@ -1,0 +1,12 @@
+name: stac
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - rasterio=1.4.3
+  - pystac=1.13.0
+  - pip:
+      - rio-stac==0.10.1
+      - rio-cogeo==5.4.2
+
