@@ -6,7 +6,7 @@ jupyter: titiler  # Use your Conda environment
 
 ```{r env-activate}
 library(reticulate)
-reticulate::use_condaenv("titiler2", required = TRUE)
+reticulate::use_condaenv("titiler", required = TRUE)
 # reticulate::py_config()
 
 ```
@@ -64,16 +64,16 @@ def datetime_parse_item(s):
 ```{python stac-item-create}
 # Define the path to the STAC collection JSON file.  
 
-path_local = "/Users/airvine/Projects/gis/stac_dem_bc/stac/prod/stac_dem_bc"
+path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
 path_collection = f"{path_local}/collection.json"
 
 # Define the path to the STAC collection JSON file on S3.  Seems a bit weird that we actually
 # need to put a file here in able to build our collection
-path_s3_stac = "https://stac-dem-bc.s3.amazonaws.com"
+path_s3_stac = "https://stac-orthophoto-bc.s3.amazonaws.com"
 path_s3_json = f"{path_s3_stac}/collection.json"
 
 # Define the base local path where imagery is stored
-path_base = pathlib.Path("/Users/airvine/Projects/gis/stac_dem_bc/stac/dev/stac_dem_bc")
+# path_base = pathlib.Path("/Users/airvine/Projects/gis/stac_orthophoto_bc/stac/dev/stac_orthophoto_bc")
 
 # Define the base S3 URL where assets are hosted
 path_s3 = "https://nrs.objectstore.gov.bc.ca/gdwuts"
@@ -137,12 +137,99 @@ collection.save_object(
 
 ```
 
+```{python, parallel-stac-item-create}
+import concurrent.futures
+import pathlib
+import json
+from datetime import datetime
+import pystac
+import rasterio
+import rio_stac.stac
+
+
+# Define paths
+path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
+path_collection = f"{path_local}/collection.json"
+path_s3_stac = "https://stac-orthophoto-bc.s3.amazonaws.com"
+path_s3_json = f"{path_s3_stac}/collection.json"
+path_s3 = "https://nrs.objectstore.gov.bc.ca/gdwuts"
+
+# Load base collection
+collection = pystac.Collection.from_file(path_collection)
+collection.set_self_href(path_s3_json)
+
+# Load list of image paths
+with open("data/urls_list.txt") as f:
+    path_items = f.read().splitlines()
+
+# Define the COG validity check
+def is_geotiff_readable(url: str) -> bool:
+    try:
+        with rasterio.Env():
+            with rasterio.open(url) as src:
+                return src.profile['driver'] == 'GTiff'
+    except Exception:
+        return False
+
+# Define the processing function
+def process_item(path_item: str) -> dict | None:
+    href_item = path_item.replace("https:/", "https://")
+
+    if not is_geotiff_readable(href_item):
+        print(f"Skipping invalid COG: {href_item}")
+        return None
+
+    item_id = path_item[len(path_s3):].replace("/", "-").removesuffix(".tif")
+    item_time = datetime_parse_item(date_extract_from_path(path_item))
+
+    try:
+        item = rio_stac.stac.create_stac_item(
+            path_item,
+            id=item_id,
+            asset_media_type='image/tiff; application=geotiff; profile=cloud-optimized',
+            asset_name='image',
+            asset_href=href_item,
+            with_proj=True,
+            collection=collection.id,
+            collection_url=path_s3_json,
+            asset_roles=["data"]
+        )
+        item.datetime = item_time
+        item.set_self_href(f"{path_s3_stac}/{item_id}.json")
+
+        # Save locally
+        path_item_json = f"{path_local}/{item_id}.json"
+        item.save_object(dest_href=path_item_json)
+
+        return {
+            "id": item_id,
+            "json_path": path_item_json
+        }
+    except Exception as e:
+        print(f"Error processing {href_item}: {e}")
+        return None
+
+# Run in parallel using threads to avoid rasterio multiprocessing issues
+try:
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        results = list(filter(None, executor.map(process_item, path_items)))
+except Exception as e:
+    print(f"Parallel execution failed: {e}")
+    results = []
+
+# Add all valid items to the collection
+if results:
+    for result in results:
+        item = pystac.Item.from_file(result["json_path"])
+        col
+
+```
 
 
 ```{r json-clean, eval= FALSE}
 # DELETE ATTACK - USE WITH CARE
 # list all the jsonsin the directory so we can delete them
-path_base = "/Users/airvine/Projects/gis/stac_dem_bc/stac/prod/stac_dem_bc"
+path_base = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
 # path_base = "/Users/airvine/Projects/gis/uav_imagery/stac/dev/imagery_uav_bc"
 
 j <- fs::dir_ls(path_base, glob = "*.json", recurse = TRUE)
