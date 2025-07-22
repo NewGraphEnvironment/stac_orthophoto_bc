@@ -4,8 +4,8 @@
 # s3fs::s3_dir_ls()
 
 # prod
-path_in <- "/Users/airvine/Projects/gis/stac_dem_bc/stac/prod/stac_dem_bc"
-path_out <- "s3://stac-dem-bc"
+path_in <- "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
+path_out <- "s3://stac-orthophoto-bc"
   
 
 # lets just use aws to load everything into our dev-imagery-uav-bc bucket except the dotfiles
