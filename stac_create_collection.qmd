@@ -130,24 +130,24 @@ print(f"Temporal extent: {start_time.isoformat()} to {end_time.isoformat()}")
 
 ```
 
-
 ```{python collection-create}
 path_collection = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc/collection.json"
+# test!!!!!!!!!!!!!!!
+# path_collection = "/Users/airvine/Projects/gis/stac/test/collection.json"
+
 path_s3_json = "https://stac-orthophoto-bc.s3.amazonaws.com/collection.json"
 collection_id = "stac-orthophoto-bc"
 
-# path_cogs = list(Path(path_collection).parent.rglob("*.tif"))
-
 with open("data/urls_list.txt") as f:
-    path_cogs = f.read().splitlines()
+    path_items = f.read().splitlines()
     
 # Define spatial extent (bounding box for BC)
 spatial_extent = SpatialExtent([[-140, 48, -114, 60]])
 
-# Get bbox from your COGs - except that it takes forever
-# duration = timeit.timeit(lambda: bbox_combined(path_cogs[:500]), number=1)
+# Get bbox from your COGs - except that it takes forever (20 minutes - maybe bc they are not COGs - or perhaps that is just how long it takes)
+# duration = timeit.timeit(lambda: bbox_combined(path_items[:500]), number=1)
 # print(f"Computed bbox in {duration:.2f} seconds.")
-# bbox = bbox_combined(path_cogs)
+# # bbox = bbox_combined(path_items)
 # spatial_extent = SpatialExtent([list(bbox)])
 
 # Define temporal extent using datetime objects
@@ -165,7 +165,6 @@ collection = Collection(
     title=f"Orthophotos from British Columbia - {collection_id}",
     href=path_collection
 )
-
 
 # Save the collection JSON
 collection.save(catalog_type=pystac.CatalogType.ABSOLUTE_PUBLISHED)
