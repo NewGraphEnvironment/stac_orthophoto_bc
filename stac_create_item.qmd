@@ -12,12 +12,6 @@ reticulate::use_condaenv("stac", required = TRUE)
 ```
 
 
-```{python import-modules}
-import pathlib
-import pystac
-import rio_stac
-```
-
 ```{python date-extract}
 import re
 
@@ -61,83 +55,7 @@ def datetime_parse_item(s):
 ```
 
 
-```{python stac-item-create}
-# Define the path to the STAC collection JSON file.  
-
-path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
-path_collection = f"{path_local}/collection.json"
-
-# Define the path to the STAC collection JSON file on S3.  Seems a bit weird that we actually
-# need to put a file here in able to build our collection
-path_s3_stac = "https://stac-orthophoto-bc.s3.amazonaws.com"
-path_s3_json = f"{path_s3_stac}/collection.json"
-
-# Define the base local path where imagery is stored
-# path_base = pathlib.Path("/Users/airvine/Projects/gis/stac_orthophoto_bc/stac/dev/stac_orthophoto_bc")
-
-# Define the base S3 URL where assets are hosted
-path_s3 = "https://nrs.objectstore.gov.bc.ca/gdwuts"
-
-# Load the existing STAC collection from the file
-collection = pystac.Collection.from_file(path_collection)
-
-# Manually set the self HREF for the collection to the cloud location
-collection.set_self_href(path_s3_json)
-
-# Define a list of paths to process
-# path_items = list(path_base.rglob("*.tif"))
-
-with open("data/urls_list.txt") as f:
-    path_items = f.read().splitlines()
-
-# Iterate over each image file in the list
-for path_item in path_items:
-    # Compute the relative path of the item within the base directory
-    href_item = path_item.replace("https:/", "https://")
-    item_id = path_item[len(path_s3):].replace("/", "-").removesuffix(".tif")
-    item_time = datetime_parse_item(date_extract_from_path(path_item))
-
-
-    # Create a STAC Item for the given image file
-    item = rio_stac.stac.create_stac_item(
-        path_item, 
-        id=item_id,
-        asset_media_type='image/tiff; application=geotiff; profile=cloud-optimized',
-        asset_name='image',
-        asset_href=href_item,
-        with_proj=True,  # Extract and include projection properties
-        collection=collection.id,  # Assign the item to the collection
-        collection_url=collection.get_self_href(),  # Use collection's self href
-        asset_roles=["data"]
-    )
-    
-    # becasue we use rio we need to add the datetime after
-    item.datetime = item_time
-
-    # Add the newly created item to the collection
-    collection.add_item(item)
-    
-    # Define the correct self_href for the item JSON file
-    item_self_href = f"{path_s3_stac}/{item_id}.json"
-    item.set_self_href(item_self_href)
-
-    # Print the asset HREF for debugging purposes
-    print(f"Asset HREF after editing: {item.assets['image'].href}")
-
-    # Save the STAC item JSON in the main directory 
-    path_item_json = f"{path_local}/{item_id}.json"
-    item.save_object(dest_href=path_item_json)
-
-
-# Save the updated STAC collection with the new items included
-collection.save_object(
-    # include_self_link=True, 
-    dest_href=path_collection
-    )
-
-```
-
-```{python, parallel-stac-item-create}
+```{python create-stac-items}
 import concurrent.futures
 import pathlib
 import json
@@ -151,8 +69,8 @@ import os
 import argparse
 
 # Parse CLI arguments
-# Set check_all to True to revalidate all URLs
-check_all = True
+test_only = True
+check_all = False if test_only else True
 
 # Define paths
 path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
@@ -160,7 +78,7 @@ path_collection = f"{path_local}/collection.json"
 path_s3_stac = "https://stac-orthophoto-bc.s3.amazonaws.com"
 path_s3_json = f"{path_s3_stac}/collection.json"
 path_s3 = "https://nrs.objectstore.gov.bc.ca/gdwuts"
-path_results_csv = "data/data/stac_geotiff_checks.csv"
+path_results_csv = "data/stac_geotiff_checks.csv"
 
 # Load base collection
 collection = pystac.Collection.from_file(path_collection)
@@ -169,9 +87,8 @@ collection.set_self_href(path_s3_json)
 # Load list of image paths
 with open("data/urls_list.txt") as f:
     path_items = f.read().splitlines()
-    
-# jsut for testing!!!!
-path_items = path_items[:20]
+
+
 
 # Load previous validation results
 if os.path.exists(path_results_csv) and not check_all:
@@ -180,6 +97,14 @@ if os.path.exists(path_results_csv) and not check_all:
 else:
     df_existing = pd.DataFrame(columns=["url", "is_geotiff", "is_cog"])
     done_urls = set()
+
+# Run validation only on new URLs unless check_all is set
+urls_to_check = path_items if check_all else [u for u in path_items if u not in done_urls]
+
+# Optional test mode overrides check_all and limits to 3
+if test_only:
+    check_all = False
+    urls_to_check = urls_to_check[:3]
 
 # Validate GeoTIFF and COG in one step
 def check_geotiff_cog(url: str) -> dict:
@@ -190,32 +115,31 @@ def check_geotiff_cog(url: str) -> dict:
             stderr=subprocess.PIPE,
             check=False
         )
-        output = result.stdout.decode()
+        output = result.stdout.decode() + result.stderr.decode()
         return {
             "url": url,
-            "is_geotiff": "The following errors were found:" in output or "is a valid cloud optimized GeoTIFF" in output,
+            "is_geotiff": "is NOT a valid cloud optimized GeoTIFF" in output or "is a valid cloud optimized GeoTIFF" in output,
             "is_cog": "is a valid cloud optimized GeoTIFF" in output
         }
     except FileNotFoundError:
         raise RuntimeError("`rio cogeo` is not installed or not in PATH")
 
-# Run validation only on new URLs unless --force is set
-urls_to_check = path_items if args.force else [u for u in path_items if u not in done_urls]
 
-print(f"Checking {len(urls_to_check)} URLs{' (forced)' if args.force else ' (new only)'}...")
+print(f"Checking {len(urls_to_check)} URLs{' (forced)' if check_all else ' (new only)'}...")
 
 # Run checks
+import tqdm
 with concurrent.futures.ThreadPoolExecutor() as executor:
-    new_results = list(executor.map(check_geotiff_cog, urls_to_check))
+    new_results = list(tqdm.tqdm(executor.map(check_geotiff_cog, urls_to_check), total=len(urls_to_check), desc="Validating GeoTIFFs"))
 
 # Combine and save
 df_new = pd.DataFrame(new_results)
-df_all = df_new if args.force else pd.concat([df_existing, df_new], ignore_index=True)
+df_all = df_new if check_all else pd.concat([df_existing, df_new], ignore_index=True)
 df_all.to_csv(path_results_csv, index=False)
 
 # Create lookup for quick access
 results_lookup = {
-    row["url"]: {"is_geotiff": row["is_geotiff"], "is_cog": row["is_cog"]}
+    row["url"].replace("https:/", "https://"): {"is_geotiff": row["is_geotiff"], "is_cog": row["is_cog"]}
     for _, row in df_all.iterrows()
 }
 
@@ -228,6 +152,7 @@ def process_item(path_item: str) -> dict | None:
         return None
 
     item_id = path_item[len(path_s3):].replace("/", "-").removesuffix(".tif")
+
     item_time = datetime_parse_item(date_extract_from_path(path_item))
 
     media_type = (
@@ -250,10 +175,11 @@ def process_item(path_item: str) -> dict | None:
         )
         item.datetime = item_time
         item.set_self_href(f"{path_s3_stac}/{item_id}.json")
+        item.assets['image'].href = href_item
 
         # Save locally
         path_item_json = f"{path_local}/{item_id}.json"
-        item.save_object(dest_href=path_item_json)
+        item.save_object(dest_href=path_item_json, include_self_link=False)
 
         return {
             "id": item_id,
@@ -266,7 +192,7 @@ def process_item(path_item: str) -> dict | None:
 # Run in parallel using threads to avoid rasterio multiprocessing issues
 try:
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = list(filter(None, executor.map(process_item, path_items)))
+        results = list(filter(None, tqdm.tqdm(executor.map(process_item, urls_to_check), total=len(urls_to_check), desc="Creating STAC Items")))
 except Exception as e:
     print(f"Parallel execution failed: {e}")
     results = []
@@ -275,10 +201,13 @@ except Exception as e:
 if results:
     for result in results:
         item = pystac.Item.from_file(result["json_path"])
+        item.set_self_href(f"{path_s3_stac}/{result['id']}.json")  # <- critical
+        item.clear_links("self")
         collection.add_item(item)
 
-# Save final collection
+
 collection.save_object(dest_href=path_collection)
+
 
 ```
 
@@ -306,8 +235,8 @@ for item in collection.get_all_items():
 
 
 # or 1 at a time
-item = Item.from_file(f"{path_local}/093-093h-2019-dem-bc_093h092_xli1m_utm10_2019.json")
-item.validate()
+# item = Item.from_file(f"{path_local}/093-093h-2019-dem-bc_093h092_xli1m_utm10_2019.json")
+# item.validate()
 ```
 
 
