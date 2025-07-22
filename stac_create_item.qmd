@@ -71,8 +71,8 @@ from pystac import Link, RelType
 
 
 # Parse CLI arguments
-test_only = False
-check_all = False if test_only else True
+test_only = True
+test_number_items = 10
 
 # Define paths
 path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
@@ -91,44 +91,16 @@ path_results_csv = "data/stac_geotiff_checks.csv"
 collection = pystac.Collection.from_file(path_collection)
 collection.set_self_href(path_s3_json)
 
-# # Load list of image paths
-# with open("data/urls_list.txt") as f:
-#     path_items = f.read().splitlines()
-# 
-# # Load previous validation results
-# if os.path.exists(path_results_csv) and not check_all:
-#     df_existing = pd.read_csv(path_results_csv)
-#     done_urls = set(df_existing["url"])
-# else:
-#     df_existing = pd.DataFrame(columns=["url", "is_geotiff", "is_cog"])
-#     done_urls = set()
-# 
-# 
-# # Run validation only on new URLs unless check_all is set
-# urls_to_check = path_items if check_all else [u for u in path_items if u not in done_urls]
-# 
-# Optional test mode overrides check_all and limits to 3
-# if test_only:
-#     check_all = False
-#     urls_to_check = urls_to_check[:3]
-
 # Load list of image paths
 with open("data/urls_list.txt") as f:
     path_items = f.read().splitlines()
 
-# Load previous validation results
-if os.path.exists(path_results_csv) and not check_all:
-    df_existing = pd.read_csv(path_results_csv)
-    done_urls = set(df_existing["url"])
-else:
-    df_existing = pd.DataFrame(columns=["url", "is_geotiff", "is_cog"])
-    done_urls = set()
-
 # Determine URLs to check
 if test_only:
-    urls_to_check = path_items[:3]
-else:
-    urls_to_check = path_items if check_all else [u for u in path_items if u not in done_urls]
+    urls_to_check = path_items[:test_number_items]
+else:   
+    urls_to_check = path_items
+
 
 # Validate GeoTIFF and COG in one step
 def check_geotiff_cog(url: str) -> dict:
@@ -239,9 +211,8 @@ collection.save_object(dest_href=path_collection)
 # DELETE ATTACK - USE WITH CARE
 # list all the jsons in the directory so we can delete them
 path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
-
 # TEST!!!
-path_local = "/Users/airvine/Projects/gis/stac/test"
+# path_local = "/Users/airvine/Projects/gis/stac/test"
 j <- fs::dir_ls(path_local, glob = "*.json", recurse = TRUE)
 
 fs::file_delete(j)
@@ -249,15 +220,12 @@ fs::file_delete(j)
 ```
 
 ```{python validate}
-
-
 for item in collection.get_all_items():
     try:
         item.validate()
         # print(f"✅ {item.id} is valid.")
     except Exception as e:
         print(f"❌ {item.id} failed validation: {e}")
-
 
 # or 1 at a time
 # item = Item.from_file(f"{path_local}/093-093h-2019-dem-bc_093h092_xli1m_utm10_2019.json")
@@ -282,6 +250,5 @@ lines <- gsub(
 
 # Write back to the same file
 writeLines(lines, path)
-
 ```
 
