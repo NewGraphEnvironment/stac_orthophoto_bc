@@ -1,10 +1,10 @@
-stac_dem_bc
+stac_orthophotos_bc
 ================
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-![groovy](https://img.shields.io/badge/live-fRee-green)
-![fUn](https://img.shields.io/badge/play-hArd-red)
+![groovy](https://img.shields.io/badge/old-hAt-pink)
+![fUn](https://img.shields.io/badge/clean-liVing-purple)
 
 The goal of
 [`stac_dem_bc`](https://github.com/NewGraphEnvironment/stac_dem_bc) is
@@ -18,8 +18,9 @@ items to QGIS.
 
 <br>
 
-This work leverages work in a sister repo
-[`stac_uav_bc`](http://www.newgraphenvironment.com/stac_uav_bc) with the
+This work leverages work sister repos
+[`stac_uav_bc`](http://www.newgraphenvironment.com/stac_uav_bc) and
+[`stac_dem_bc`](http://www.newgraphenvironment.com/stac_dem_bc) with the
 registration of the stac done with scripts
 [here](https://github.com/NewGraphEnvironment/stac_uav_bc/blob/main/scripts/web.R)
 and
@@ -32,17 +33,18 @@ and
 <br>
 
 Here we will use [`bcdata`](https://github.com/bcgov/bcdata) (indirectly
-through our Reproducable Field Projects
+through our Reproducible Field Projects
 [`rfp`](https://www.newgraphenvironment.com/rfp/) package) to give us
-the Bulkley River watershed group - then query the `stac-dem-bc`
-collection for all the DEMs that land in that watershed group for the
-timeframe between 2018 and 2020.
+the Richfield Creek [freshwater atlas assessment
+watershed](https://catalogue.data.gov.bc.ca/dataset/freshwater-atlas-assessment-watersheds/resource/57b84cf3-8330-4805-abb6-aaf27e6c64c0) -
+then query the `stac-orthophoto-bc` collection for all the DEMs that
+land in that watershed group for the timeframe between 2018 and 2021.
 
 ``` r
 aoi <- rfp::rfp_bcd_get_data(
-  "whse_basemapping.fwa_watershed_groups_poly",
-  col_filter = "watershed_group_name",
-  col_filter_value = "Bulkley River"
+  "whse_basemapping.fwa_assessment_watersheds_poly",
+  col_filter = "gnis_name_1",
+  col_filter_value = "Richfield Creek"
 ) |> 
   sf::st_transform(crs = 4326)
 
@@ -52,13 +54,12 @@ bbox <- aoi |>
   as.numeric()
 
 date_start <- "2018-01-01T00:00:00Z"
-date_end <- "2020-12-31T00:00:00Z"
+date_end <- "2021-12-31T00:00:00Z"
 
 # use rstac to query the collection
 q <- rstac::stac("https://images.a11s.one/") |>
   rstac::stac_search(
-    # collections = "imagery-uav-bc-dev",
-    collections = "stac-dem-bc",
+    collections = "stac-orthophoto-bc",
     # bbox = bbox,
     intersects = jsonlite::fromJSON(
       geojsonsf::sf_geojson(
