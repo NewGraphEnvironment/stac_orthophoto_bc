@@ -67,13 +67,20 @@ import subprocess
 import pandas as pd
 import os
 import argparse
+from pystac import Link, RelType
+
 
 # Parse CLI arguments
-test_only = True
+test_only = False
 check_all = False if test_only else True
 
 # Define paths
 path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
+
+# TEST!!!!!!!!!!!!!!!!!!!!
+# path_local = "/Users/airvine/Projects/gis/stac/test"
+
+
 path_collection = f"{path_local}/collection.json"
 path_s3_stac = "https://stac-orthophoto-bc.s3.amazonaws.com"
 path_s3_json = f"{path_s3_stac}/collection.json"
@@ -84,11 +91,30 @@ path_results_csv = "data/stac_geotiff_checks.csv"
 collection = pystac.Collection.from_file(path_collection)
 collection.set_self_href(path_s3_json)
 
+# # Load list of image paths
+# with open("data/urls_list.txt") as f:
+#     path_items = f.read().splitlines()
+# 
+# # Load previous validation results
+# if os.path.exists(path_results_csv) and not check_all:
+#     df_existing = pd.read_csv(path_results_csv)
+#     done_urls = set(df_existing["url"])
+# else:
+#     df_existing = pd.DataFrame(columns=["url", "is_geotiff", "is_cog"])
+#     done_urls = set()
+# 
+# 
+# # Run validation only on new URLs unless check_all is set
+# urls_to_check = path_items if check_all else [u for u in path_items if u not in done_urls]
+# 
+# Optional test mode overrides check_all and limits to 3
+# if test_only:
+#     check_all = False
+#     urls_to_check = urls_to_check[:3]
+
 # Load list of image paths
 with open("data/urls_list.txt") as f:
     path_items = f.read().splitlines()
-
-
 
 # Load previous validation results
 if os.path.exists(path_results_csv) and not check_all:
@@ -98,13 +124,11 @@ else:
     df_existing = pd.DataFrame(columns=["url", "is_geotiff", "is_cog"])
     done_urls = set()
 
-# Run validation only on new URLs unless check_all is set
-urls_to_check = path_items if check_all else [u for u in path_items if u not in done_urls]
-
-# Optional test mode overrides check_all and limits to 3
+# Determine URLs to check
 if test_only:
-    check_all = False
-    urls_to_check = urls_to_check[:3]
+    urls_to_check = path_items[:3]
+else:
+    urls_to_check = path_items if check_all else [u for u in path_items if u not in done_urls]
 
 # Validate GeoTIFF and COG in one step
 def check_geotiff_cog(url: str) -> dict:
@@ -123,7 +147,6 @@ def check_geotiff_cog(url: str) -> dict:
         }
     except FileNotFoundError:
         raise RuntimeError("`rio cogeo` is not installed or not in PATH")
-
 
 print(f"Checking {len(urls_to_check)} URLs{' (forced)' if check_all else ' (new only)'}...")
 
@@ -152,7 +175,6 @@ def process_item(path_item: str) -> dict | None:
         return None
 
     item_id = path_item[len(path_s3):].replace("/", "-").removesuffix(".tif")
-
     item_time = datetime_parse_item(date_extract_from_path(path_item))
 
     media_type = (
@@ -174,7 +196,6 @@ def process_item(path_item: str) -> dict | None:
             asset_roles=["data"]
         )
         item.datetime = item_time
-        item.set_self_href(f"{path_s3_stac}/{item_id}.json")
         item.assets['image'].href = href_item
 
         # Save locally
@@ -183,7 +204,8 @@ def process_item(path_item: str) -> dict | None:
 
         return {
             "id": item_id,
-            "json_path": path_item_json
+            "item": item
+            # "media_type": media_type
         }
     except Exception as e:
         print(f"Error processing {href_item}: {e}")
@@ -197,16 +219,17 @@ except Exception as e:
     print(f"Parallel execution failed: {e}")
     results = []
 
-# Add all valid items to the collection
+# Add all valid item json href to the collection
 if results:
     for result in results:
-        item = pystac.Item.from_file(result["json_path"])
-        item.set_self_href(f"{path_s3_stac}/{result['id']}.json")  # <- critical
-        item.clear_links("self")
-        collection.add_item(item)
-
+        collection.add_link(Link(
+            rel=RelType.ITEM,
+            target=f"{path_s3_stac}/{result['id']}.json",
+            media_type="application/json"
+        ))
 
 collection.save_object(dest_href=path_collection)
+
 
 
 ```
@@ -215,9 +238,11 @@ collection.save_object(dest_href=path_collection)
 ```{r json-clean, eval= FALSE}
 # DELETE ATTACK - USE WITH CARE
 # list all the jsons in the directory so we can delete them
-path_base = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
+path_local = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc"
 
-j <- fs::dir_ls(path_base, glob = "*.json", recurse = TRUE)
+# TEST!!!
+path_local = "/Users/airvine/Projects/gis/stac/test"
+j <- fs::dir_ls(path_local, glob = "*.json", recurse = TRUE)
 
 fs::file_delete(j)
 
@@ -239,130 +264,24 @@ for item in collection.get_all_items():
 # item.validate()
 ```
 
+```{r hack-collection-repair, eval=FALSE}
+# we had an error we are reparing here manually rather than rerun for 5 hours
+# Load and modify the file
+path <- "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc/collection.json"
 
-```{python, xyz, eval - FALSE}
-import mercantile
+# Read the file
+lines <- readLines(path)
 
-# Bounds from Titiler response
-west, south, east, north = -124.703866, 54.107650, -124.695957, 54.111509
-
-# Choose a zoom level
-zoom = 15
-
-# Get a tile covering the center of the bounds
-tile = mercantile.tile((west + east) / 2, (south + north) / 2, zoom)
-
-print(f"Tile coordinates: Z={tile.z}, X={tile.x}, Y={tile.y}")
-```
-
-```{python query-s3-json}
-import pystac
-
-# Load the Collection JSON directly
-collection = pystac.Collection.from_file("https://dev-imagery-uav-bc.s3.amazonaws.com/imagery_uav_bc.json")
-
-# Define BC bounding box (approximate)
-bbox_bc = [-139, 48, -114, 60]  # (West, South, East, North)
-
-# Get all items linked in the collection
-items = collection.get_all_items()
-
-# Filter items that fall within BC bounds
-bc_items = []
-for item in items:
-    # Check if item's bounding box intersects with BC
-    item_bbox = item.bbox  # [west, south, east, north]
-    if (
-        item_bbox[2] >= bbox_bc[0] and  # Item east >= BC west
-        item_bbox[0] <= bbox_bc[2] and  # Item west <= BC east
-        item_bbox[3] >= bbox_bc[1] and  # Item north >= BC south
-        item_bbox[1] <= bbox_bc[3]      # Item south <= BC north
-    ):
-        bc_items.append(item)
-
-# Print matching items
-for item in bc_items:
-    print(f"Item: {item.id}")
-    for asset_key, asset in item.assets.items():
-        print(f"  - {asset_key}: {asset.href}")
-
-
-```
-
-
-```{python query-titiler}
-import requests
-import pystac
-
-# Define BC bounding box (West, South, East, North)
-bbox_bc = [-139, 48, -114, 60]
-
-# Titiler endpoint
-titiler_endpoint = "http://titiler-env.eba-s4jhubvr.us-west-2.elasticbeanstalk.com"
-
-# Load the STAC Collection
-collection_url = "https://dev-imagery-uav-bc.s3.amazonaws.com/imagery_uav_bc.json"
-collection = pystac.Collection.from_file(collection_url)
-
-# Get all items
-items = collection.get_all_items()
-
-# Filter items using /stac/bounds
-matching_items = []
-for item in items:
-    stac_url = item.get_self_href()
-    bounds_url = f"{titiler_endpoint}/stac/bounds?url={stac_url}"
-
-    response = requests.get(bounds_url)
-    if response.status_code == 200:
-        item_bbox = response.json()["bounds"]  # [west, south, east, north]
-
-        # Check intersection with BC bbox
-        if (
-            item_bbox[2] >= bbox_bc[0] and  # Item east >= BC west
-            item_bbox[0] <= bbox_bc[2] and  # Item west <= BC east
-            item_bbox[3] >= bbox_bc[1] and  # Item north >= BC south
-            item_bbox[1] <= bbox_bc[3]      # Item south <= BC north
-        ):
-            matching_items.append((item.id, stac_url))
-
-# Print matching items
-print("Matching Items in BC:")
-for item_id, stac_url in matching_items:
-    print(f"- {item_id}: {stac_url}")
-
-
-```
-
-```{python footprint}
-
-# here we explore how to update the footprints of our items so that we see where the raster has non-na values
-# Remote URL wrapped in /vsicurl/ for GDAL
-url = "/vsicurl/https://nrs.objectstore.gov.bc.ca/gdwuts/093/093h/2019/dem/bc_093h092_xli1m_utm10_2019.tif"
-url = "/vsicurl/https://nrs.objectstore.gov.bc.ca/gdwuts/093/093h/2019/dem/bc_093h084_xli1m_utm10_2019.tif"
-
-from stactools.core.utils.raster_footprint import RasterFootprint
-from shapely.geometry import shape, mapping, Polygon
-
-# Build footprint
-rf = RasterFootprint.from_href(
-    href=url,
-    precision=5,                # Coarser geometry (faster, smaller)
-    densification_factor=None, # Disable extra vertex interpolation
-    densification_distance=None,
-    simplify_tolerance=0.001,  # Simplify geometry slightly (in degrees) 0.001 ≈ 111 meters
-    no_data=None,              # Use nodata from metadata (excludes it automatically)
-    bands=[1]                  # Only use first band
+# Replace all instances of the MIME type
+lines <- gsub(
+  pattern = '"type": "image/tiff; application=geotiff"',
+  replacement = '"type": "application/json"',
+  x = lines,
+  fixed = TRUE
 )
-geojson_dict = rf.footprint()
 
-# Optional: turn into shapely geometry
-geom = shape(geojson_dict)
-
-# Convert back to GeoJSON dict
-geojson_geom = mapping(geom)
-
-print(geojson_geom)
+# Write back to the same file
+writeLines(lines, path)
 
 ```
 
