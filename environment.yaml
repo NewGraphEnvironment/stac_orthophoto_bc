@@ -9,4 +9,5 @@ dependencies:
   - pip:
       - rio-stac==0.10.1
       - rio-cogeo==5.4.2
+      - stac-validator==3.10.0
 
