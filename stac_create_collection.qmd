@@ -15,7 +15,7 @@ reticulate::use_condaenv("titiler", required = TRUE)
 keys <- ngr::ngr_s3_keys_get(
   url_bucket = "https://nrs.objectstore.gov.bc.ca/gdwuts",
   prefix = "",
-  pattern = c("dem", "*.tif")
+  pattern = c("orthophoto", "*.tif")
 )
 
 fs::dir_create("data")
@@ -24,6 +24,8 @@ fs::dir_create("data")
 keys_clean <- keys[!stringr::str_detect(keys, "\\(")]
 
 readr::write_lines(keys_clean, "data/urls_list.txt")
+
+fs::dir_create("/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc")
 
 ```
 
@@ -72,6 +74,27 @@ def bbox_combined(paths, max_workers=8):
 ```{python temporal-extent}
 
 from datetime import datetime, timezone
+import re
+
+# this is more flexible 
+def date_extract_from_path(s):
+    # Step 1: Try to extract YYYYMMDD or YYYY after _utmXX_
+    match = re.search(r'_utm\d{1,2}_([0-9]{4,8})', s)
+    if match:
+        val = match.group(1)
+        if val.isdigit():
+            year = int(val[:4])
+            if 2000 <= year <= 2050:
+                return val
+
+    # Step 2: Fallback: look for /YYYY/ in the path
+    fallback = re.search(r'/([2][0-9]{3})/', s)
+    if fallback:
+        year = int(fallback.group(1))
+        if 2000 <= year <= 2050:
+            return str(year)
+
+    return None
 
 def datetime_parse_item(s):
     if s is None:
@@ -86,7 +109,7 @@ def datetime_parse_item(s):
 with open("data/urls_list.txt") as f:
     path_items = f.read().splitlines()
 
-# Extract all valid datetimes
+# Extract all valid datetimes - 
 times = [
     datetime_parse_item(date_extract_from_path(p))
     for p in path_items
@@ -109,9 +132,9 @@ print(f"Temporal extent: {start_time.isoformat()} to {end_time.isoformat()}")
 
 
 ```{python collection-create}
-path_collection = "/Users/airvine/Projects/gis/stac_dem_bc/stac/prod/stac_dem_bc/collection.json"
-path_s3_json = "https://stac-dem-bc.s3.amazonaws.com/collection.json"
-collection_id = "stac-dem-bc"
+path_collection = "/Users/airvine/Projects/gis/stac_orthophoto_bc/prod/stac_orthophoto_bc/collection.json"
+path_s3_json = "https://stac-orthophoto-bc.s3.amazonaws.com/collection.json"
+collection_id = "stac-orthophoto-bc"
 
 # path_cogs = list(Path(path_collection).parent.rglob("*.tif"))
 
@@ -119,13 +142,13 @@ with open("data/urls_list.txt") as f:
     path_cogs = f.read().splitlines()
     
 # Define spatial extent (bounding box for BC)
-# spatial_extent = SpatialExtent([[-140, 48, -114, 60]])
+spatial_extent = SpatialExtent([[-140, 48, -114, 60]])
 
 # Get bbox from your COGs - except that it takes forever
 # duration = timeit.timeit(lambda: bbox_combined(path_cogs[:500]), number=1)
 # print(f"Computed bbox in {duration:.2f} seconds.")
-bbox = bbox_combined(path_cogs)
-spatial_extent = SpatialExtent([list(bbox)])
+# bbox = bbox_combined(path_cogs)
+# spatial_extent = SpatialExtent([list(bbox)])
 
 # Define temporal extent using datetime objects
 # temporal_extent = TemporalExtent([[datetime(2011, 9, 14), datetime(2024, 9, 26)]])
@@ -136,10 +159,10 @@ extent = Extent(spatial=spatial_extent, temporal=temporal_extent)
 # Create the STAC Collection
 collection = Collection(
     id=collection_id,
-    description="A collection of Digital Elevation Models from British Columbia - as served on lidarbc",
+    description="A collection of Orthophotos from British Columbia - as served on lidarbc",
     extent=extent,
     license="CC-BY-4.0",
-    title=f"Digital Elevation Models from British Columbia - {collection_id}",
+    title=f"Orthophotos from British Columbia - {collection_id}",
     href=path_collection
 )
 
@@ -161,6 +184,7 @@ collection.set_self_href(path_s3_json)
 Test to see if the collection is valid
 
 ```{python}
+# need to load the collection.json to aws!!! first. should fix but not ging to
 # stac validate ./bc-uav-collection.json
 
 collection = pystac.Collection.from_file(path_collection)
