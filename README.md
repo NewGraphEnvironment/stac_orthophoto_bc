@@ -1,4 +1,4 @@
-stac_orthophotos_bc
+stac_orthophoto_bc
 ================
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
@@ -7,8 +7,8 @@ stac_orthophotos_bc
 ![fUn](https://img.shields.io/badge/clean-liVing-purple)
 
 The goal of
-[`stac_dem_bc`](https://github.com/NewGraphEnvironment/stac_dem_bc) is
-to serve the British Columbia lidarBC digital elevation model
+[`stac_orthophoto_bc`](https://github.com/NewGraphEnvironment/stac_orthophoto_bc)
+is to serve the British Columbia lidarBC digital elevation model
 collection. It can be queried by location and/or time using our API via
 the lovely [`rstac` R
 package](https://brazil-data-cube.github.io/rstac/) and [QGIS
