@@ -24,7 +24,6 @@ source('scripts/functions.R')
 
 
 ```{r build, echo= FALSE, eval = FALSE}
-# we need to chabge the rmd_on param to FALSE to render the README.md for the github landing page
 rmarkdown::render(
   "README.Rmd", 
   output_format = "github_document", 
